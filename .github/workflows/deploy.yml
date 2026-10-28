@@ -1,0 +1,75 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate pdfs.json
+        run: |
+          python3 << 'EOF'
+          import os
+          import json
+
+          pdfs = []
+
+          for carpeta in ["favoritas","resto"]:
+              if not os.path.isdir(carpeta):
+                  continue
+
+              for raiz, dirs, archivos in os.walk(carpeta):
+                  for archivo in archivos:
+                      if archivo.lower().endswith(".pdf"):
+                          ruta = os.path.join(raiz, archivo).replace("\\", "/")
+
+                          pdfs.append({
+                              "nombre": os.path.splitext(archivo)[0],
+                              "ruta": ruta
+                          })
+
+          pdfs.sort(key=lambda x: x["nombre"].lower())
+
+          with open("pdfs.json", "w", encoding="utf-8") as f:
+              json.dump(pdfs, f, ensure_ascii=False, indent=2)
+
+          print(f"Generados {len(pdfs)} PDFs")
+          EOF
+
+      - name: Show pdfs.json
+        run: cat pdfs.json
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    needs: build
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
